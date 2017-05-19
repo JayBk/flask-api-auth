@@ -2,9 +2,11 @@ import os
 import json
 import sqlite3
 import unittest
+import jwt
 from datetime import datetime, timedelta
 
 from api._02_custom_auth import app as api_app_2
+from api._03_jwt_auth import app as api_app_3
 from api.custom_auth import sign
 
 PROJECT_HOME = os.path.dirname(os.path.realpath(__file__))
@@ -16,7 +18,7 @@ SCHEMA_FILE_NAME = 'auth-schema.sql'
 class BaseDatabaseTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        api_app_2.config.update({
+        cls.APP.config.update({
             'DATABASE_NAME': TESTING_DATABASE_NAME
         })
 
@@ -153,3 +155,98 @@ class CustomAuthTestCases(BaseDatabaseTestCase):
         }
         resp = self.app.post(path, headers=headers)
         self.assertEqual(resp.status_code, 401)
+
+
+class JWTTestCases(BaseDatabaseTestCase):
+    APP = api_app_3
+
+    def setUp(self):
+        super(JWTTestCases, self).setUp()
+        self.username = 'admin'
+        self.password = 'secret'
+
+    def test_login_correct_user(self):
+        credentials = json.dumps({
+            'username': self.username,
+            'password': self.password,
+        })
+        resp = self.app.post(
+            '/login', data=credentials, content_type='application/json')
+
+        self.assertEqual(resp.status_code, 200)
+
+        content = json.loads(resp.get_data(as_text=True))
+        self.assertTrue('token'in content)
+
+    def test_login_incorrect_user(self):
+        credentials = json.dumps({
+            'username': self.username,
+            'password': 'INVALID',
+        })
+        resp = self.app.post(
+            '/login', data=credentials, content_type='application/json')
+        self.assertEqual(resp.status_code, 400)
+
+        content = json.loads(resp.get_data(as_text=True))
+        self.assertEqual(content, {
+            'error': 'Invalid Credentials'
+        })
+
+    def test_not_authenticated_cant_post(self):
+        resp = self.app.post('/book')
+        self.assertEqual(resp.status_code, 400)
+
+        content = json.loads(resp.get_data(as_text=True))
+        self.assertEqual(content, {
+            'error': 'Authorization header not provided'
+        })
+
+    def test_send_invalid_header(self):
+        headers = {
+            'Authorization': 'Basic ----'
+        }
+        resp = self.app.post('/book', headers=headers)
+        self.assertEqual(resp.status_code, 400)
+
+        content = json.loads(resp.get_data(as_text=True))
+        self.assertEqual(content, {
+            'error': 'Authorization header format error'
+        })
+
+    def test_send_incorrect_token(self):
+        headers = {
+            'Authorization': 'Bearer XXXX.YYYY.ZZZZ'
+        }
+        resp = self.app.post('/book', headers=headers)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_send_invalid_secret(self):
+        token = jwt.encode({'username': 'admin'}, 'SPOOFED').decode('utf-8')
+        headers = {
+            'Authorization': 'Bearer {}'.format(token)
+        }
+        resp = self.app.post('/book', headers=headers)
+        self.assertEqual(resp.status_code, 401)
+
+    def test_authenticated_sends_correct_token(self):
+        credentials = json.dumps({
+            'username': self.username,
+            'password': self.password,
+        })
+        resp = self.app.post(
+            '/login', data=credentials, content_type='application/json')
+
+        self.assertEqual(resp.status_code, 200)
+
+        content = json.loads(resp.get_data(as_text=True))
+        self.assertTrue('token'in content)
+        token = content['token']
+
+        headers = {
+            'Authorization': 'Bearer {}'.format(token)
+        }
+        resp = self.app.post('/book', headers=headers)
+        content = json.loads(resp.get_data(as_text=True))
+        self.assertEqual(content, {
+            'greetings': 'admin'
+        })

@@ -4,6 +4,7 @@ import os
 
 from api._01_basic_auth import app
 # from api._02_custom_auth import app
+# from api._03_jwt_auth import app
 
 
 if __name__ == '__main__':

@@ -7,5 +7,14 @@ create table ApiClient (
   secret_key text not null
 );
 
+drop table if exists User;
+create table User (
+  id integer primary key autoincrement,
+  username  text not null,
+  password text not null
+);
+
 INSERT INTO ApiClient (id, public_key, secret_key) VALUES (1, 'mobile_app', '$secret$');
 INSERT INTO ApiClient (id, public_key, secret_key) VALUES (2, 'smartwatch', '$secret$');
+
+INSERT INTO User (id, username, password) VALUES (1, 'admin', 'secret');
